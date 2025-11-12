@@ -6,6 +6,7 @@ import { ConfigModule } from '@nestjs/config';
 import { config } from './config';
 import { databaseConfiguration } from './config/database';
 import { UserModule } from './modules/user/user.module';
+import {JobService} from "./common/job.service";
 
 @Module({
   imports: [
