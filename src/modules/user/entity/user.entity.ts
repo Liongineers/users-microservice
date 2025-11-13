@@ -1,9 +1,9 @@
-import {Column, Entity, PrimaryGeneratedColumn} from "typeorm";
+import {Column, Entity, PrimaryGeneratedColumn, UpdateDateColumn} from "typeorm";
 import {UUID} from "node:crypto";
 
 @Entity()
 export class Users {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('uuid')
     user_id: UUID;
 
     @Column({ type: 'varchar'})
@@ -17,4 +17,7 @@ export class Users {
 
     @Column({ type: 'varchar' })
     merch: string;
+
+    @UpdateDateColumn()
+    updated_at: Date;
 }
