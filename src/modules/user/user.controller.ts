@@ -1,23 +1,25 @@
-import { 
-    Body, 
-    Controller, 
-    Delete, 
-    Get, 
-    Param, 
-    Patch, 
+import {
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Param,
+    Patch,
     Post,
     Query,
     Req,
     Res,
     ParseIntPipe,
     DefaultValuePipe,
-    NotFoundException
+    NotFoundException,
+    HttpCode,
+    Header,
+    StreamableFile,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UUID } from 'node:crypto';
 import { UpdateUserDto } from './dto/update-user.dto';
-
 import { Request, Response } from 'express';
 import {
     ApiBody,
@@ -28,11 +30,18 @@ import {
     ApiQuery,
     ApiTags,
 } from '@nestjs/swagger';
+import {collectionLinks, operationLinks, userLinks} from "../../common/link.builder";
+import {JobService} from "../../common/job.service";
+import { createReadStream, existsSync } from 'node:fs';
+import * as path from 'node:path';
+
+const EXPORT_DIR = path.resolve(process.cwd(), 'exports');
 
 @ApiTags('users')
 @Controller('users')
 export class UserController {
-    constructor(private userService: UserService) {}
+    constructor(private userService: UserService,
+                private jobService: JobService,) {}
 
     // getUsers to implement Pagination and Query Params
     @Get()
@@ -44,7 +53,7 @@ export class UserController {
     @ApiOkResponse({
         description: 'Paginated list of users returned.',
     })
-    getUsers(
+    async getUsers(
         // Use @Query() to capture URL query parameters
         @Query('role') role?: string,
         @Query('merch') merch?: string,
@@ -54,7 +63,14 @@ export class UserController {
     ) {
         // Pass the captured values to the service
         const filters = { role, merch };
-        return this.userService.getUsers(filters, page!, limit!);
+        const users = await this.userService.getUsers(filters, page!, limit!);
+        return {
+            _links: collectionLinks(),
+            total: users.total,
+            page: users.page,
+            limit: users.limit,
+            data: users.data.map((u) => ({ ...u, _links: userLinks(String(u.user_id)) })),
+        };
     }
 
     // getUser to implement eTag processing
@@ -94,7 +110,7 @@ export class UserController {
 
             // If they don't match, set the ETag header and send the full 200 OK response
             res.setHeader('ETag', etag);
-            res.status(200).send(user);
+            res.status(200).send({ ...user, _links: userLinks(String(user.user_id)) });
 
         } catch (error) {
             if (error instanceof NotFoundException) {
@@ -112,8 +128,9 @@ export class UserController {
     @ApiCreatedResponse({
         description: 'User created.',
     })
-    createUser(@Body() createUserDto: CreateUserDto) {
-        return this.userService.createUser(createUserDto);
+    async createUser(@Body() createUserDto: CreateUserDto) {
+        const u = await this.userService.createUser(createUserDto);
+        return { ...u, _links: userLinks(String(u.user_id)) };
     }
 
     @Patch(':userId')
@@ -125,8 +142,9 @@ export class UserController {
     @ApiOkResponse({
         description: 'User updated.',
     })
-    updateUser(@Param('userId') userId: UUID, @Body() updateUserDto: UpdateUserDto) {
-        return this.userService.updateUser(userId, updateUserDto);
+    async updateUser(@Param('userId') userId: UUID, @Body() updateUserDto: UpdateUserDto) {
+        const u = await this.userService.updateUser(userId, updateUserDto);
+        return { ...u, _links: userLinks(String(u.user_id)) };
     }
 
     @Delete(':userId')
@@ -139,5 +157,61 @@ export class UserController {
     })
     deleteUser(@Param('userId') userId: UUID) {
         return this.userService.deleteUser(userId);
+    }
+
+    @Post(':userId/export')
+    @ApiOperation({ summary: 'Start an async user export' })
+    @ApiParam({ name: 'userId', schema: { type: 'string', format: 'uuid' } })
+    @ApiOkResponse({
+        description: 'Accepted; poll the operation link for status.',
+    })
+    @HttpCode(202)
+    @Header('Retry-After', '2')
+    async startExport(@Param('userId') userId: string) {
+        const job = this.jobService.create('user-export', { userId });
+
+        void this.jobService.run(job.id, async () => {
+            await this.userService.writeUserCsv(userId, EXPORT_DIR);
+            return { resultPath: `/users/${userId}/export/result` };
+        });
+
+        return {
+            jobId: job.id,
+            status: job.status, // "pending"
+            _links: operationLinks(job.id, userId),
+        };
+    }
+
+    @Get('operations/:jobId')
+    @ApiOperation({ summary: 'Poll async operation status' })
+    @ApiParam({ name: 'jobId', schema: { type: 'string', format: 'uuid' } })
+    @ApiOkResponse({ description: 'Current job status and links.' })
+    async getOperation(@Param('jobId') jobId: string) {
+        const job = this.jobService.get(jobId);
+        if (!job) {
+            throw new NotFoundException('Operation not found.');
+        }
+        const userId = (job as any).meta?.userId as string | undefined;
+        return {
+            jobId: job.id,
+            status: job.status,
+            _links: operationLinks(job.id, userId, job.resultPath),
+            error: job.error ?? undefined,
+        };
+    }
+
+    @Get(':userId/export/result')
+    @ApiOperation({ summary: 'Download CSV export for this user' })
+    @ApiOkResponse({ description: 'CSV stream.' })
+    async exportResult(@Param('userId') userId: string) {
+        const filePath = path.join(EXPORT_DIR, `${userId}.csv`);
+        if (!existsSync(filePath)) {
+            throw new NotFoundException('Export not ready (or not found).');
+        }
+        const stream = createReadStream(filePath);
+        return new StreamableFile(stream, {
+            type: 'text/csv',
+            disposition: `attachment; filename="user-${userId}.csv"`,
+        });
     }
 }

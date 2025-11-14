@@ -5,6 +5,8 @@ import {Users} from "./entity/user.entity";
 import {Repository, FindOptionsWhere} from "typeorm";
 import {UUID} from "node:crypto";
 import {UpdateUserDto} from "./dto/update-user.dto";
+import * as path from 'node:path';
+import * as fs from 'node:fs/promises';
 
 export interface UserFilters {
     role?: string;
@@ -86,5 +88,25 @@ export class UserService {
 
     public async deleteUser(userId: UUID): Promise<{deleted?: number|null}> {
         return {deleted: (await this.userRepository.delete({user_id: userId})).affected};
+    }
+
+    async writeUserCsv(userId: string, exportDir: string) {
+        await fs.mkdir(exportDir, { recursive: true });
+
+        const user = await this.getUser(userId as any);
+
+        const csv = [
+            'user_id,name,role,phonenumber,merch',
+            [
+                user.user_id,
+                JSON.stringify(user.name ?? ''),
+                JSON.stringify(user.role ?? ''),
+                JSON.stringify(user.phonenumber ?? ''),
+                JSON.stringify(user.merch ?? ''),
+            ].join(','),
+        ].join('\n');
+
+        const filePath = path.join(exportDir, `${userId}.csv`);
+        await fs.writeFile(filePath, csv, { encoding: 'utf8' });
     }
 }
