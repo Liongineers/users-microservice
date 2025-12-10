@@ -19,10 +19,10 @@ export class AuthController {
   async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
     // User info from Google
     const user = req.user;
-
+  
     // Check if user exists
     let dbUser = await this.userService.findByEmail(user.email);
-
+  
     if (!dbUser) {
       // Create new user
       dbUser = await this.userService.createUser({
@@ -41,15 +41,16 @@ export class AuthController {
     };
     
     const token = this.jwtService.sign(payload);
-
-    // For now, just return the token as JSON
-    // Later, redirect to your frontend with the token
-    return res.json({
-      message: 'Login successful',
-      token: token,
-      user: dbUser
-    });
+  
+    // Encode user for redirect
+    const encodedUser = encodeURIComponent(JSON.stringify(dbUser));
+  
+    // Redirect to frontend
+    return res.redirect(
+      `${process.env.FRONTEND_URL}/index.html?token=${token}&user=${encodedUser}`
+    );
   }
+
 
   @Get('profile')
   @UseGuards(AuthGuard('jwt'))
