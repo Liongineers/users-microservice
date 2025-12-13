@@ -7,6 +7,13 @@ import {UUID} from "node:crypto";
 import {UpdateUserDto} from "./dto/update-user.dto";
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
+import { PubSub } from '@google-cloud/pubsub'; 
+
+
+const pubSubClient = new PubSub({
+    projectId: process.env.GCP_PROJECT_ID || 'cloud-computing-473717',
+});
+const USER_CREATED_TOPIC = 'user-created-event';
 
 export interface UserFilters {
     role?: string;
@@ -26,6 +33,31 @@ export class UserService {
     constructor(
         @InjectRepository(Users) private readonly userRepository: Repository<Users>,
     ) {}
+    
+    // NEW: Private helper method to handle the asynchronous publishing action
+    private async publishNewUserEvent(user: Users): Promise<void> {
+        try {
+            // Define the minimal payload to decouple services
+            const payload = {
+                user_id: user.user_id,
+                email: user.email,
+                name: user.name,
+                timestamp: new Date().toISOString(),
+                // Add any other crucial fields the Cloud Function needs
+            };
+            
+            // Pub/Sub messages must be sent as a Buffer/byte array
+            const dataBuffer = Buffer.from(JSON.stringify(payload));
+            
+            await pubSubClient.topic(USER_CREATED_TOPIC).publishMessage({ data: dataBuffer });
+            
+            console.log(`[Pub/Sub] Event published to ${USER_CREATED_TOPIC} for user ${user.user_id}`);
+        } catch (error) {
+            // CRITICAL: Log the error but DO NOT re-throw or fail the main API call.
+            // The event is a non-essential side-effect.
+            console.error(`[Pub/Sub ERROR] Failed to publish message: ${error.message}`);
+        }
+    }
 
     // getUsers method to handle filtering and pagination
     public async getUsers(
@@ -78,7 +110,15 @@ export class UserService {
         user.role = createUserDto.role;
         user.phonenumber = createUserDto.phoneNumber ?? null;
         user.merch = createUserDto.merch ?? null;
-        return this.userRepository.save(user);
+
+        // Save the user to the database (synchronous, primary action)
+        const savedUser = await this.userRepository.save(user);
+
+        // Publish the event
+        // We use savedUser to ensure we send the final user_id assigned by the DB.
+        this.publishNewUserEvent(savedUser); 
+
+        return savedUser;
     }
 
     public async updateUser(userId: UUID, updateUserDto: UpdateUserDto): Promise<Users> {
