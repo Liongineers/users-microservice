@@ -121,15 +121,20 @@ export class UserService {
         return savedUser;
     }
 
-    public async updateUser(userId: UUID, updateUserDto: UpdateUserDto): Promise<Users> {
-        const user = await this.getUser(userId);
-        user.email = updateUserDto.email ? updateUserDto.email : user.email;
-        user.name = updateUserDto.name ? updateUserDto.name : user.name;
-        user.role = updateUserDto.role ? updateUserDto.role : user.role;
-        user.phonenumber = updateUserDto.phoneNumber ? updateUserDto.phoneNumber : user.phonenumber;
-        user.merch = updateUserDto.merch ? updateUserDto.merch : user.merch;
-        user.user_id = userId;
-        return this.userRepository.save(user);
+    public async updateUser(userId: UUID, dto: UpdateUserDto): Promise<Users> {
+        console.log("Before update");
+	const patch: Partial<Users> = {};
+
+        if (dto.email !== null) patch.email = dto.email;
+        if (dto.name !== null) patch.name = dto.name;
+        if (dto.role !== null) patch.role = dto.role;
+        if (dto.phoneNumber !== null) patch.phonenumber = dto.phoneNumber;
+        if (dto.merch !== null) patch.merch = dto.merch;
+	console.log("Right before");
+        const result = await this.userRepository.update({ user_id: userId }, patch);
+        if (!result.affected) throw new NotFoundException('User not found');
+	console.log("After");
+        return this.getUser(userId);
     }
 
     public async deleteUser(userId: UUID): Promise<{deleted?: number|null}> {
