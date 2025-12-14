@@ -17,6 +17,12 @@ async function bootstrap() {
     // Serve Swagger UI at /api and JSON at /api-json
     SwaggerModule.setup('api', app, document, { jsonDocumentUrl: 'api-json' });
 
+    app.use((req: any, res: any, next: any) => {
+        res.on('finish', () => console.log('[FINISH]', req.method, req.originalUrl, res.statusCode));
+        res.on('close',  () => console.log('[CLOSE ]', req.method, req.originalUrl));
+        next();
+    });
+
     await app.listen(appConfiguration().port);
 }
 bootstrap();

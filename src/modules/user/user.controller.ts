@@ -142,9 +142,9 @@ export class UserController {
     @ApiOkResponse({
         description: 'User updated.',
     })
-    async updateUser(@Param('userId') userId: UUID, @Body() updateUserDto: UpdateUserDto) {
+    async updateUser(@Param('userId') userId: UUID, @Body() updateUserDto: UpdateUserDto, @Res() res: Response,) {
         const u = await this.userService.updateUser(userId, updateUserDto);
-        return { ...u, _links: userLinks(String(u.user_id)) };
+        return res.status(200).send({ ...u, _links: userLinks(String(u.user_id)) });
     }
 
     @Delete(':userId')
