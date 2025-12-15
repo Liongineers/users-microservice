@@ -15,7 +15,9 @@ import {
     HttpCode,
     Header,
     StreamableFile,
+    UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UUID } from 'node:crypto';
@@ -44,6 +46,7 @@ export class UserController {
                 private jobService: JobService,) {}
 
     // getUsers to implement Pagination and Query Params
+    @UseGuards(AuthGuard('jwt'))
     @Get()
     @ApiOperation({ summary: 'Get all users (with filtering and pagination)' })
     @ApiQuery({ name: 'role', required: false, description: 'Filter by user role' })
@@ -74,6 +77,7 @@ export class UserController {
     }
 
     // getUser to implement eTag processing
+    @UseGuards(AuthGuard('jwt'))
     @Get(':userId')
     @ApiOperation({ summary: 'Get a user by id (with eTag support)' })
     @ApiParam({
@@ -133,6 +137,7 @@ export class UserController {
         return { ...u, _links: userLinks(String(u.user_id)) };
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Patch(':userId')
     @ApiOperation({ summary: 'Update an existing user' })
     @ApiParam({
@@ -147,6 +152,7 @@ export class UserController {
         return res.status(200).send({ ...u, _links: userLinks(String(u.user_id)) });
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Delete(':userId')
     @ApiOperation({ summary: 'Delete a user' })
     @ApiParam({
@@ -159,6 +165,7 @@ export class UserController {
         return this.userService.deleteUser(userId);
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Post(':userId/export')
     @ApiOperation({ summary: 'Start an async user export' })
     @ApiParam({ name: 'userId', schema: { type: 'string', format: 'uuid' } })
@@ -182,6 +189,7 @@ export class UserController {
         };
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Get('operations/:jobId')
     @ApiOperation({ summary: 'Poll async operation status' })
     @ApiParam({ name: 'jobId', schema: { type: 'string', format: 'uuid' } })
@@ -200,6 +208,7 @@ export class UserController {
         };
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Get(':userId/export/result')
     @ApiOperation({ summary: 'Download CSV export for this user' })
     @ApiOkResponse({ description: 'CSV stream.' })
